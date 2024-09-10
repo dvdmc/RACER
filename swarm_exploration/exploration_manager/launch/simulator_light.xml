@@ -7,6 +7,9 @@
   <arg name="init_x"/>
   <arg name="init_y"/>
   <arg name="init_z"/> 
+  <arg name="init_orw"/> 
+  <arg name="init_orz"/> 
+
   <!-- Size of the flight environment -->
   <arg name="map_size_x"/>
   <arg name="map_size_y"/>
@@ -19,6 +22,8 @@
       <param name="init_x" value="$(arg init_x)"/>
       <param name="init_y" value="$(arg init_y)"/>
       <param name="init_z" value="$(arg init_z)"/>
+      <param name="init_orw" value="$(arg init_orw)"/>
+      <param name="init_orz" value="$(arg init_orz)"/>
       <remap from="~command" to="/planning/pos_cmd_$(arg drone_id)"/>
       <remap from="~odometry" to="$(arg odometry_topic)"/>
   </node>

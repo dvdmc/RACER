@@ -10,7 +10,7 @@ ros::Subscriber _cmd_sub;
 ros::Publisher  _odom_pub;
 
 quadrotor_msgs::PositionCommand _cmd;
-double _init_x, _init_y, _init_z;
+double _init_x, _init_y, _init_z, _init_orw, _init_orz;
 int drone_id_;
 
 bool rcv_cmd = false;
@@ -68,10 +68,10 @@ void pubOdom()
 	    odom.pose.pose.position.y = _init_y;
 	    odom.pose.pose.position.z = _init_z;
 
-	    odom.pose.pose.orientation.w = 1;
+	    odom.pose.pose.orientation.w = _init_orw;
 	    odom.pose.pose.orientation.x = 0;
 	    odom.pose.pose.orientation.y = 0;
-	    odom.pose.pose.orientation.z = 0;
+	    odom.pose.pose.orientation.z = _init_orz;
 
 	    odom.twist.twist.linear.x = 0.0;
 	    odom.twist.twist.linear.y = 0.0;
@@ -93,6 +93,8 @@ int main (int argc, char** argv)
     nh.param("init_x", _init_x,  0.0);
     nh.param("init_y", _init_y,  0.0);
     nh.param("init_z", _init_z,  0.0);
+	nh.param("init_orw", _init_orw,  1.0);
+	nh.param("init_orz", _init_orz,  0.0);
     nh.param("drone_id", drone_id_, 1);
 
     _cmd_sub  = nh.subscribe( "command", 1, rcvPosCmdCallBack );

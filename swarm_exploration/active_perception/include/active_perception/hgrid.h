@@ -41,8 +41,8 @@ public:
   bool updateBaseCoor();
   void inputFrontiers(const vector<Eigen::Vector3d>& avgs);
   void getCostMatrix(const vector<Eigen::Vector3d>& positions,
-      const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
-      const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat);
+      const vector<Eigen::Vector3d>& velocities, const vector<double>& yaws, const vector<vector<int>>& first_ids,
+      const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat, Eigen::MatrixXd& mat2);
   void getGridTour(const vector<int>& ids, const Eigen::Vector3d& pos,
       vector<Eigen::Vector3d>& tour, vector<Eigen::Vector3d>& tour2);
   void getFrontiersInGrid(const vector<int>& grid_ids, vector<int>& ftr_ids);
@@ -58,8 +58,8 @@ public:
   void getActiveGrids(vector<int>& grid_ids);
   bool isConsistent(const int& id1, const int& id2);
   double getCostDroneToGrid(
-      const Eigen::Vector3d& pos, const int& grid_id, const vector<int>& first);
-  double getCostGridToGrid(const int& id1, const int& id2, const vector<vector<int>>& firsts,
+      const Eigen::Vector3d& pos, const Eigen::Vector3d& vel, const double& yaw, const int& grid_id, const vector<int>& first);
+  double getCostGridToGrid(const int& id1, const int& id2, const Eigen::Vector3d& vel, const vector<vector<int>>& firsts,
       const vector<vector<int>>& seconds, const int& drone_num);
   unique_ptr<Astar> path_finder_;
 

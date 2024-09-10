@@ -69,6 +69,8 @@ void MapROS::init() {
   update_range_pub_ = node_.advertise<visualization_msgs::Marker>("/sdf_map/update_range", 10);
   depth_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/sdf_map/depth_cloud", 10);
 
+  map_size_pub_ = node_.advertise<std_msgs::Int32>("/sdf_map/map_size", 5, true);
+
   // basecoor_sub_ = node_.subscribe("/sdf_map/basecoor", 10, &MapROS::basecoorCallback, this);
 
   depth_sub_.reset(
@@ -330,6 +332,12 @@ void MapROS::publishMapAll() {
   cloud1.header.frame_id = frame_id_;
   sensor_msgs::PointCloud2 cloud_msg;
   pcl::toROSMsg(cloud1, cloud_msg);
+
+  std_msgs::Int32 map_size;
+  map_size.data = cloud1.size();
+  //ROS_ERROR("Map size: %d", cloud1.size());
+  map_size_pub_.publish(map_size);
+  
   map_all_pub_.publish(cloud_msg);
 
   // // Output time and known volumn

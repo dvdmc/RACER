@@ -13,8 +13,6 @@
 #include <plan_env/sdf_map.h>
 #include <plan_env/edt_environment.h>
 #include <plan_manage/planner_manager.h>
-// #include <lkh_tsp_solver/lkh_interface.h>
-// #include <lkh_mtsp_solver/lkh3_interface.h>
 #include <lkh_tsp_solver/SolveTSP.h>
 #include <lkh_mtsp_solver/SolveMTSP.h>
 
@@ -23,6 +21,18 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <visualization_msgs/Marker.h>
+
+
+#include <algorithm>
+#include <cstdint>
+#include <sstream>
+#include <vector>
+
+#include "google/protobuf/duration.pb.h"
+#include "ortools/constraint_solver/routing.h"
+#include "ortools/constraint_solver/routing_enums.pb.h"
+#include "ortools/constraint_solver/routing_index_manager.h"
+#include "ortools/constraint_solver/routing_parameters.h"
 
 using namespace Eigen;
 
@@ -51,6 +61,8 @@ void FastExplorationManager::initialize(ros::NodeHandle& nh) {
 
   ed_.reset(new ExplorationData);
   ep_.reset(new ExplorationParam);
+
+  nh.param("exploration/lib", ep_->lib, string("lkh"));
 
   nh.param("exploration/refine_local", ep_->refine_local_, true);
   nh.param("exploration/refined_num", ep_->refined_num_, -1);
@@ -443,7 +455,7 @@ void FastExplorationManager::findGridAndFrontierPath(const Vector3d& cur_pos,
   vector<int> ftr_ids;
   // uniform_grid_->getFrontiersInGrid(ego_ids[0], ftr_ids);
   hgrid_->getFrontiersInGrid(ego_ids, ftr_ids);
-  ROS_INFO("Find frontier tour, %d involved------------", ftr_ids.size());
+  ROS_INFO("Find frontier tour, %ld involved------------", ftr_ids.size());
 
   if (ftr_ids.empty()) {
     frontier_ids = {};
@@ -655,8 +667,149 @@ void FastExplorationManager::refineLocalTour(const Vector3d& cur_pos, const Vect
   // ROS_WARN("create: %lf, search: %lf, parse: %lf", create_time, search_time, parse_time);
 }
 
+// void FastExplorationManager::allocateGrids(const vector<Eigen::Vector3d>& positions,
+//     const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
+//     const vector<vector<int>>& second_ids, const vector<int>& grid_ids, vector<int>& ego_ids,
+//     vector<int>& other_ids) {
+   
+//     auto t1 = ros::Time::now();
+//     auto t2 = t1;
+
+//     if (grid_ids.size() == 1) {  // Only one grid, no need to run ACVRP
+//         auto pt = hgrid_->getCenter(grid_ids.front());
+//         vector<Eigen::Vector3d> path;
+//         double d1 = ViewNode::computeCost(positions[0], pt, 0, 0, Eigen::Vector3d(0, 0, 0), 0, path);
+//         double d2 = ViewNode::computeCost(positions[1], pt, 0, 0, Eigen::Vector3d(0, 0, 0), 0, path);
+//         if (d1 < d2) {
+//             ego_ids = grid_ids;
+//             other_ids = {};
+//         } else {
+//             ego_ids = {};
+//             other_ids = grid_ids;
+//         }
+//         return;
+//     }
+
+//     Eigen::MatrixXd mat;
+//     hgrid_->getCostMatrix(positions, velocities, first_ids, second_ids, grid_ids, mat);
+
+//     int unknown;
+
+//     double mat_time = (ros::Time::now() - t1).toSec();
+
+//     const int dimension = mat.rows();
+//     const int drone_num = positions.size();
+
+//     //ROS_ERROR("Dimension: %d", dimension);
+//     //ROS_ERROR("Drone num: %d", drone_num);
+
+//     vector<int> unknown_nums;
+//     int capacity = 0;
+//     for (int i = 0; i < grid_ids.size(); ++i) {
+//         int unum = hgrid_->getUnknownCellsNum(grid_ids[i]);
+//         unknown_nums.push_back(unum);
+//         capacity += unum;
+//     }
+//     capacity = capacity * 0.75 * 0.1;
+
+//     //ROS_ERROR("CONTROL POINT 1");
+
+//     const operations_research::RoutingIndexManager::NodeIndex depot{0};
+
+//     // Create Routing Model
+//     operations_research::RoutingIndexManager manager(dimension, drone_num, depot);
+//     operations_research::RoutingModel routing(manager);
+
+//     //ROS_ERROR("CONTROL POINT 2");
+
+//     std::vector<std::vector<int64_t>> matrix(dimension, std::vector<int64_t>(dimension));
+//     //std::vector<std::vector<int64_t>> matrix(dimension, std::vector<int64_t>(dimension, dimension));
+//     for (int i = 0; i < dimension; ++i) {
+//         for (int j = 0; j < dimension; ++j) {
+//             matrix[i][j] = static_cast<int64_t>(mat(i, j));
+//         }
+//     }
+
+//     //ROS_ERROR("CONTROL POINT 3");
+
+//     const int transit_callback_index = routing.RegisterTransitCallback([&matrix, &manager](int64_t i, int64_t j) -> int64_t{
+//       const int from_node = manager.IndexToNode(i).value();
+//       const int to_node = manager.IndexToNode(j).value();
+//       //ROS_ERROR("Matrix[%d][%d]: %d", from_node, to_node, matrix[from_node][to_node]);
+//       return matrix[from_node][to_node];
+//     });
+
+//     //ROS_ERROR("CONTROL POINT 4");
+
+//     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index);
+
+//       // Add Distance constraint.
+//     routing.AddDimension(transit_callback_index, 0, 500000, true, "Distance");
+//     routing.GetMutableDimension("Distance")->SetGlobalSpanCostCoefficient(100);
+
+//     operations_research::RoutingSearchParameters parameters = operations_research::DefaultRoutingSearchParameters();
+//     parameters.set_first_solution_strategy(operations_research::FirstSolutionStrategy::PATH_CHEAPEST_ARC);
+//     //parameters.set_local_search_metaheuristic(operations_research::LocalSearchMetaheuristic::GUIDED_LOCAL_SEARCH);
+//     //parameters.mutable_time_limit()->set_seconds(1);
+
+//     //ROS_ERROR("CONTROL POINT 5");
+
+//     // Solve the problem
+//     const operations_research::Assignment* solution = routing.SolveWithParameters(parameters);
+
+//     //ROS_ERROR("CONTROL POINT 6");
+
+//     vector<vector<int>> tours;
+//     vector<int> tour;
+
+//     if (solution != nullptr) {
+//       //ROS_ERROR("CONTROL POINT 7");
+//       for (int vehicle_id = 0; vehicle_id < drone_num; ++vehicle_id) {
+//         int64_t index = routing.Start(vehicle_id);
+//         while (!routing.IsEnd(index)) {
+//             tour.push_back(manager.IndexToNode(index).value());
+//             index = solution->Value(routing.NextVar(index));
+//         }
+//         tours.push_back(tour);
+//         tour.clear();
+
+//         // ROS_ERROR("tour: ");
+//         // for(int i = 0; i <= tour.size(); i++){
+//         // ROS_ERROR("%d, ", tour[i]);
+//         // }
+//       }
+//     }
+    
+//     //ROS_ERROR("tours size: %d", tours.size());
+//     //ROS_ERROR("tours[0] size: %d", tours[0].size());
+//     //ROS_ERROR("tours[1] size: %d", tours[1].size());
+
+//     for (int i = 0; i < tours.size(); ++i) {
+//       if (tours[i].size() > 0) {
+//         if (i == 0) {
+//           ego_ids.insert(ego_ids.end(), tours[i].begin() + 1, tours[i].end());
+//         } else {
+//           other_ids.insert(other_ids.end(), tours[i].begin() + 1, tours[i].end());
+//         }
+//       }
+//     }
+//     for (auto& id : ego_ids) {
+//       id = grid_ids[id - 1 - drone_num];
+//     }
+//     for (auto& id : other_ids) {
+//       id = grid_ids[id - 1 - drone_num];
+//     }
+
+//     // delete solution;
+
+//     double mtsp_time = (ros::Time::now() - t1).toSec();
+//     std::cout << "Allocation time: " << mtsp_time << std::endl;
+
+//     //ROS_ERROR("CONTROL POINT 8");
+// }
+
 void FastExplorationManager::allocateGrids(const vector<Eigen::Vector3d>& positions,
-    const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
+    const vector<Eigen::Vector3d>& velocities, const vector<double>& yaws, const vector<vector<int>>& first_ids,
     const vector<vector<int>>& second_ids, const vector<int>& grid_ids, vector<int>& ego_ids,
     vector<int>& other_ids) {
   // ROS_INFO("Allocate grid.");
@@ -681,9 +834,14 @@ void FastExplorationManager::allocateGrids(const vector<Eigen::Vector3d>& positi
     return;
   }
 
-  Eigen::MatrixXd mat;
+  //ROS_ERROR("Drone 1 vel: %lf, %lf, %lf", velocities[0][0], velocities[0][1], velocities[0][2]);
+  //ROS_ERROR("Drone 2 vel: %lf, %lf, %lf", velocities[1][0], velocities[1][1], velocities[1][2]);
+
+  Eigen::MatrixXd mat, mat2;
   // uniform_grid_->getCostMatrix(positions, velocities, prev_first_ids, grid_ids, mat);
-  hgrid_->getCostMatrix(positions, velocities, first_ids, second_ids, grid_ids, mat);
+  hgrid_->getCostMatrix(positions, velocities, yaws, first_ids, second_ids, grid_ids, mat, mat2);
+  //ROS_ERROR("mat(1,5) = %lf, mat2(1,5) = %lf", mat(1, 5), mat2(1, 5));
+  //ROS_ERROR("mat(5,8) = %lf, mat2(5,8) = %lf", mat(5, 8), mat2(5, 8));
 
   // int unknown = hgrid_->getTotalUnknwon();
   int unknown;
@@ -712,152 +870,387 @@ void FastExplorationManager::allocateGrids(const vector<Eigen::Vector3d>& positi
   // else
   //   prob_type = 1;  // Use AmTSP
 
-  const int prob_type = 2;
+  if (ep_->lib == "lkh") {
+    //ROS_ERROR("LKH");
+    const int prob_type = 2;
 
-  // Create problem file--------------------------
-  ofstream file(ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".atsp");
-  file << "NAME : pairopt\n";
+    // Create problem file--------------------------
+    ofstream file(ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".atsp");
+    file << "NAME : pairopt\n";
 
-  if (prob_type == 1)
-    file << "TYPE : ATSP\n";
-  else if (prob_type == 2)
-    file << "TYPE : ACVRP\n";
+    if (prob_type == 1)
+      file << "TYPE : ATSP\n";
+    else if (prob_type == 2)
+      file << "TYPE : ACVRP\n";
 
-  file << "DIMENSION : " + to_string(dimension) + "\n";
-  file << "EDGE_WEIGHT_TYPE : EXPLICIT\n";
-  file << "EDGE_WEIGHT_FORMAT : FULL_MATRIX\n";
+    file << "DIMENSION : " + to_string(dimension) + "\n";
+    file << "EDGE_WEIGHT_TYPE : EXPLICIT\n";
+    file << "EDGE_WEIGHT_FORMAT : FULL_MATRIX\n";
 
-  if (prob_type == 2) {
-    file << "CAPACITY : " + to_string(capacity) + "\n";   // ACVRP
-    file << "VEHICLES : " + to_string(drone_num) + "\n";  // ACVRP
-  }
-
-  // Cost matrix
-  file << "EDGE_WEIGHT_SECTION\n";
-  for (int i = 0; i < dimension; ++i) {
-    for (int j = 0; j < dimension; ++j) {
-      int int_cost = 100 * mat(i, j);
-      file << int_cost << " ";
+    if (prob_type == 2) {
+      file << "CAPACITY : " + to_string(capacity) + "\n";   // ACVRP
+      file << "VEHICLES : " + to_string(drone_num) + "\n";  // ACVRP
     }
-    file << "\n";
-  }
 
-  if (prob_type == 2) {  // Demand section, ACVRP only
-    file << "DEMAND_SECTION\n";
-    file << "1 0\n";
-    for (int i = 0; i < drone_num; ++i) {
-      file << to_string(i + 2) + " 0\n";
+    // Cost matrix
+    file << "EDGE_WEIGHT_SECTION\n";
+    for (int i = 0; i < dimension; ++i) {
+      for (int j = 0; j < dimension; ++j) {
+        int int_cost = 100 * mat(i, j);
+        file << int_cost << " ";
+      }
+      file << "\n";
     }
+
+    if (prob_type == 2) {  // Demand section, ACVRP only
+      file << "DEMAND_SECTION\n";
+      file << "1 0\n";
+      for (int i = 0; i < drone_num; ++i) {
+        file << to_string(i + 2) + " 0\n";
+      }
+      for (int i = 0; i < grid_ids.size(); ++i) {
+        int grid_unknown = unknown_nums[i] * 0.1;
+        file << to_string(i + 2 + drone_num) + " " + to_string(grid_unknown) + "\n";
+      }
+      file << "DEPOT_SECTION\n";
+      file << "1\n";
+      file << "EOF";
+    }
+
+    file.close();
+
+    // Create par file------------------------------------------
+    int min_size = int(grid_ids.size()) / 2;
+    int max_size = ceil(int(grid_ids.size()) / 2.0);
+    file.open(ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".par");
+    file << "SPECIAL\n";
+    file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".atsp\n";
+    if (prob_type == 1) {
+      file << "SALESMEN = " << to_string(drone_num) << "\n";
+      file << "MTSP_OBJECTIVE = MINSUM\n";
+      // file << "MTSP_OBJECTIVE = MINMAX\n";
+      file << "MTSP_MIN_SIZE = " << to_string(min_size) << "\n";
+      file << "MTSP_MAX_SIZE = " << to_string(max_size) << "\n";
+      file << "TRACE_LEVEL = 0\n";
+    } else if (prob_type == 2) {
+      file << "TRACE_LEVEL = 1\n";  // ACVRP
+      file << "SEED = 0\n";         // ACVRP
+    }
+    file << "RUNS = 1\n";
+    file << "TOUR_FILE = " + ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".tour\n";
+
+    file.close();
+
+    auto par_dir = ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".atsp";
+    t1 = ros::Time::now();
+
+    lkh_mtsp_solver::SolveMTSP srv;
+    srv.request.prob = 3;
+    // if (!tsp_client_.call(srv)) {
+    if (!acvrp_client_.call(srv)) {
+      ROS_ERROR("Fail to solve ACVRP.");
+      return;
+    }
+    // system("/home/boboyu/software/LKH-3.0.6/LKH
+    // /home/boboyu/workspaces/hkust_swarm_ws/src/swarm_exploration/utils/lkh_mtsp_solver/resource/amtsp3_1.par");
+
+    double mtsp_time = (ros::Time::now() - t1).toSec();
+    std::cout << "Allocation time: " << mtsp_time << std::endl;
+
+    // Read results
+    t1 = ros::Time::now();
+
+    ifstream fin(ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".tour");
+    string res;
+    vector<int> ids;
+    while (getline(fin, res)) {
+      if (res.compare("TOUR_SECTION") == 0) break;
+    }
+    while (getline(fin, res)) {
+      int id = stoi(res);
+      ids.push_back(id - 1);
+      if (id == -1) break;
+    }
+    fin.close();
+
+    // Parse the m-tour of grid
+    vector<vector<int>> tours;
+    vector<int> tour;
+    for (auto id : ids) {
+      if (id > 0 && id <= drone_num) {
+        tour.clear();
+        tour.push_back(id);
+      } else if (id >= dimension || id <= 0) {
+        tours.push_back(tour);
+      } else {
+        tour.push_back(id);
+      }
+    }
+    // Print tour ids
+    for (auto tr : tours) {
+      std::cout << "tour: ";
+      for (auto id : tr) std::cout << id << ", ";
+        std::cout << "" << std::endl;
+    }
+
+    for (int i = 1; i < tours.size(); ++i) {
+      if (tours[i].size() > 0) {
+        if (tours[i][0] == 1) {
+          ego_ids.insert(ego_ids.end(), tours[i].begin() + 1, tours[i].end());
+          std::cout << "ego_ids: ";
+          for (auto id : ego_ids) std::cout << id << ", ";
+          std::cout << "" << std::endl;
+        } else {
+          other_ids.insert(other_ids.end(), tours[i].begin() + 1, tours[i].end());
+        }
+      }
+    }
+    // for (auto& id : ego_ids) {
+    //   id = grid_ids[id - 1 - drone_num];
+    // }
+    // for (auto& id : other_ids) {
+    //   id = grid_ids[id - 1 - drone_num];
+    // }
+
+    std::cout << "grid_ids: ";
+    for (int i = 0; i < grid_ids.size(); i++) {
+      std::cout << grid_ids[i] << ", ";
+    } std::cout << "" << std::endl;
+
+    for (auto& id : ego_ids) {
+      id = grid_ids[id - 1 - drone_num];
+    }
+
+    for (auto& id : other_ids) {
+      id = grid_ids[id - 1 - drone_num];
+    }
+
+  }
+  else if (ep_->lib == "ortools_hetero") {
+    //ROS_ERROR("ORTOOLS HETEROGENEOUS");
+    const operations_research::RoutingIndexManager::NodeIndex depot{0};
+
+    // Create Routing Model
+    operations_research::RoutingIndexManager manager(mat.cols()-3, drone_num, depot);
+    operations_research::RoutingModel routing(manager);
+
+    //std::vector<std::vector<int64_t>> matrix(dimension, std::vector<int64_t>(dimension));
+    std::vector<std::vector<int64_t>> matrix(mat.rows(), std::vector<int64_t>(mat.cols()));    
+    std::vector<std::vector<int64_t>> matrix2(mat2.rows(), std::vector<int64_t>(mat2.cols()));    
+    //std::vector<std::vector<int64_t>> matrix(dimension, std::vector<int64_t>(dimension, dimension));
+
+    //ROS_ERROR("matrix size: (%d, %d), matrix2 size: (%d, %d)", matrix.size(), matrix[1].size(), matrix2.size(), matrix2[1].size());
+
+    for (int i = 0; i < mat.rows(); ++i) {
+      for (int j = 0; j < mat.cols(); ++j) {
+        matrix[i][j] = static_cast<int64_t>(mat(i, j));
+        matrix2[i][j] = static_cast<int64_t>(mat2(i, j));
+      }
+    }
+
+    // Define cost of each arc for each vehicle.
+    for (int vehicle_id = 0; vehicle_id < drone_num; ++vehicle_id) {
+      const int64_t transit_callback_index_vehicle = routing.RegisterTransitCallback(
+        [&matrix, &matrix2, &manager, vehicle_id, drone_num] // Variables that should be accessible inside the lambda matrix
+        (const int64_t from_index, const int64_t to_index) -> int64_t { // Function parameters
+          const int from_node = manager.IndexToNode(from_index).value();
+          const int to_node = manager.IndexToNode(to_index).value();
+
+          if (vehicle_id == 0) {
+            // ROS_ERROR("ID 0");
+            return matrix[1 + vehicle_id][1 + drone_num + to_node] + matrix[1 + drone_num + from_node][1 + drone_num + to_node];
+
+          }
+          else if (vehicle_id == 1) {
+            // ROS_ERROR("ID 1");
+            return matrix2[1 + vehicle_id][1 + drone_num + to_node] + matrix2[1 + drone_num + from_node][1 + drone_num + to_node];
+
+          }
+          else { ROS_ERROR("Vehicle id error"); }
+          
+        });
+      routing.SetArcCostEvaluatorOfVehicle(transit_callback_index_vehicle, vehicle_id);
+    }
+
+    const std::vector<int64_t> vehicle_capacities{capacity, capacity};
+    std::vector<int64_t> demands;
+
+    //ROS_ERROR("vehicle capacities: %d, %d", vehicle_capacities[0], vehicle_capacities[1]);
+    //ROS_ERROR("vehicle capacities size: %d", vehicle_capacities.size());
+
     for (int i = 0; i < grid_ids.size(); ++i) {
       int grid_unknown = unknown_nums[i] * 0.1;
-      file << to_string(i + 2 + drone_num) + " " + to_string(grid_unknown) + "\n";
+      demands.push_back(grid_unknown);
     }
-    file << "DEPOT_SECTION\n";
-    file << "1\n";
-    file << "EOF";
-  }
 
-  file.close();
+    const int demand_callback_index = routing.RegisterUnaryTransitCallback(
+        [demands, &manager](int64_t i) -> int64_t {
+          return demands[manager.IndexToNode(i).value()];
+        });
 
-  // Create par file------------------------------------------
-  int min_size = int(grid_ids.size()) / 2;
-  int max_size = ceil(int(grid_ids.size()) / 2.0);
-  file.open(ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".par");
-  file << "SPECIAL\n";
-  file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".atsp\n";
-  if (prob_type == 1) {
-    file << "SALESMEN = " << to_string(drone_num) << "\n";
-    file << "MTSP_OBJECTIVE = MINSUM\n";
-    // file << "MTSP_OBJECTIVE = MINMAX\n";
-    file << "MTSP_MIN_SIZE = " << to_string(min_size) << "\n";
-    file << "MTSP_MAX_SIZE = " << to_string(max_size) << "\n";
-    file << "TRACE_LEVEL = 0\n";
-  } else if (prob_type == 2) {
-    file << "TRACE_LEVEL = 1\n";  // ACVRP
-    file << "SEED = 0\n";         // ACVRP
-  }
-  file << "RUNS = 1\n";
-  file << "TOUR_FILE = " + ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".tour\n";
+    routing.AddDimensionWithVehicleCapacity(
+        demand_callback_index,    // transit callback index
+        int64_t{0},               // null capacity slack
+        vehicle_capacities,  // vehicle maximum capacities
+        true,                     // start cumul to zero
+        "Capacity");
 
-  file.close();
+    operations_research::RoutingSearchParameters parameters = operations_research::DefaultRoutingSearchParameters();
+    parameters.set_first_solution_strategy(operations_research::FirstSolutionStrategy::PATH_CHEAPEST_ARC);
+    //parameters.set_local_search_metaheuristic(operations_research::LocalSearchMetaheuristic::GUIDED_LOCAL_SEARCH);
+    //parameters.mutable_time_limit()->set_seconds(1);
 
-  auto par_dir = ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".atsp";
-  t1 = ros::Time::now();
+    // Solve the problem
+    const operations_research::Assignment* solution = routing.SolveWithParameters(parameters);
 
-  lkh_mtsp_solver::SolveMTSP srv;
-  srv.request.prob = 3;
-  // if (!tsp_client_.call(srv)) {
-  if (!acvrp_client_.call(srv)) {
-    ROS_ERROR("Fail to solve ACVRP.");
-    return;
-  }
-  // system("/home/boboyu/software/LKH-3.0.6/LKH
-  // /home/boboyu/workspaces/hkust_swarm_ws/src/swarm_exploration/utils/lkh_mtsp_solver/resource/amtsp3_1.par");
+    vector<vector<int>> tours;
+    vector<int> tour;
 
-  double mtsp_time = (ros::Time::now() - t1).toSec();
-  std::cout << "Allocation time: " << mtsp_time << std::endl;
-
-  // Read results
-  t1 = ros::Time::now();
-
-  ifstream fin(ep_->mtsp_dir_ + "/amtsp3_" + to_string(ep_->drone_id_) + ".tour");
-  string res;
-  vector<int> ids;
-  while (getline(fin, res)) {
-    if (res.compare("TOUR_SECTION") == 0) break;
-  }
-  while (getline(fin, res)) {
-    int id = stoi(res);
-    ids.push_back(id - 1);
-    if (id == -1) break;
-  }
-  fin.close();
-
-  // Parse the m-tour of grid
-  vector<vector<int>> tours;
-  vector<int> tour;
-  for (auto id : ids) {
-    if (id > 0 && id <= drone_num) {
-      tour.clear();
-      tour.push_back(id);
-    } else if (id >= dimension || id <= 0) {
-      tours.push_back(tour);
-    } else {
-      tour.push_back(id);
+    if (solution != nullptr) {
+      for (int vehicle_id = 0; vehicle_id < drone_num; ++vehicle_id) {
+        int64_t index = routing.Start(vehicle_id);
+        while (!routing.IsEnd(index)) {
+            tour.push_back(manager.IndexToNode(index).value());
+            index = solution->Value(routing.NextVar(index));
+        }
+        tours.push_back(tour);
+        tour.clear();
+      }
     }
-  }
-  // // Print tour ids
-  // for (auto tr : tours) {
-  //   std::cout << "tour: ";
-  //   for (auto id : tr) std::cout << id << ", ";
-  //   std::cout << "" << std::endl;
-  // }
 
-  for (int i = 1; i < tours.size(); ++i) {
-    if (tours[i][0] == 1) {
-      ego_ids.insert(ego_ids.end(), tours[i].begin() + 1, tours[i].end());
-    } else {
-      other_ids.insert(other_ids.end(), tours[i].begin() + 1, tours[i].end());
+    for (auto tr : tours) {
+      std::cout << "tour: ";
+      for (auto id : tr) std::cout << id << ", ";
+        std::cout << "" << std::endl;
     }
-  }
-  for (auto& id : ego_ids) {
-    id = grid_ids[id - 1 - drone_num];
-  }
-  for (auto& id : other_ids) {
-    id = grid_ids[id - 1 - drone_num];
-  }
-  // // Remove repeated grid
-  // unordered_map<int, int> ego_map, other_map;
-  // for (auto id : ego_ids) ego_map[id] = 1;
-  // for (auto id : other_ids) other_map[id] = 1;
 
-  // ego_ids.clear();
-  // other_ids.clear();
-  // for (auto p : ego_map) ego_ids.push_back(p.first);
-  // for (auto p : other_map) other_ids.push_back(p.first);
+    for (int i = 0; i < tours.size(); ++i) {
+      if (tours[i].size() > 0) {
+        if (i == 0) {
+          ego_ids.insert(ego_ids.end(), tours[i].begin() + 1, tours[i].end());
+          std::cout << "ego_ids: ";
+          for (int i = 0; i < ego_ids.size(); i++) {
+            std::cout << ego_ids[i] << ", ";
+          } std::cout << "" << std::endl;
+        } else {
+          other_ids.insert(other_ids.end(), tours[i].begin() + 1, tours[i].end());
+          std::cout << "other_ids: ";
+          for (int i = 0; i < other_ids.size(); i++) {
+            std::cout << other_ids[i] << ", ";
+          } std::cout << "" << std::endl;
+        }
+      }
+    }
+    //std::cout << "grid_ids: ";
+    for (int i = 0; i < grid_ids.size(); i++) {
+      //std::cout << grid_ids[i] << ", ";
+    } //std::cout << "" << std::endl;
 
-  // sort(ego_ids.begin(), ego_ids.end());
-  // sort(other_ids.begin(), other_ids.end());
+    //std::cout << "ego_ids new: ";
+    for (auto& id : ego_ids) {
+      id = grid_ids[id]; // - 1 - drone_num];
+      //std::cout << id << ", ";
+    } //std::cout << "" << std::endl;
+
+    for (auto& id : other_ids) {
+      id = grid_ids[id]; // - 1 - drone_num];
+      //std::cout << id << ", ";
+    }
+
+    double mtsp_time = (ros::Time::now() - t1).toSec();
+    std::cout << "Allocation time: " << mtsp_time << std::endl;
+  }
+  else if (ep_->lib == "ortools_homo") {
+    //ROS_ERROR("ORTOOLS HOMOGENEOUS");
+    const operations_research::RoutingIndexManager::NodeIndex depot{0};
+
+    // Create Routing Model
+    operations_research::RoutingIndexManager manager(mat.cols()-3, drone_num, depot);
+    operations_research::RoutingModel routing(manager);
+
+    std::vector<std::vector<int64_t>> matrix(mat.rows(), std::vector<int64_t>(mat.cols()));
+    //std::vector<std::vector<int64_t>> matrix(dimension, std::vector<int64_t>(dimension, dimension));
+    for (int i = 0; i < dimension; ++i) {
+        for (int j = 0; j < dimension; ++j) {
+            matrix[i][j] = static_cast<int64_t>(mat(i, j));
+        }
+    }
+
+    const int transit_callback_index = routing.RegisterTransitCallback([&matrix, &manager, drone_num](int64_t i, int64_t j) -> int64_t{
+      const int from_node = manager.IndexToNode(i).value();
+      const int to_node = manager.IndexToNode(j).value();
+      //return matrix[from_node][to_node];
+      return matrix[1 + drone_num + from_node][1 + drone_num + to_node];
+    });
+
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index);
+
+    const std::vector<int64_t> vehicle_capacities{capacity, capacity};
+    std::vector<int64_t> demands;
+
+    for (int i = 0; i < grid_ids.size(); ++i) {
+      int grid_unknown = unknown_nums[i] * 0.1;
+      demands.push_back(grid_unknown);
+    }
+    
+    const int demand_callback_index = routing.RegisterUnaryTransitCallback(
+        [demands, &manager](int64_t i) -> int64_t {
+          return demands[manager.IndexToNode(i).value()];
+        });
+
+    routing.AddDimensionWithVehicleCapacity(
+        demand_callback_index,    // transit callback index
+        int64_t{0},               // null capacity slack
+        vehicle_capacities,  // vehicle maximum capacities
+        true,                     // start cumul to zero
+        "Capacity");
+
+    operations_research::RoutingSearchParameters parameters = operations_research::DefaultRoutingSearchParameters();
+    parameters.set_first_solution_strategy(operations_research::FirstSolutionStrategy::PATH_CHEAPEST_ARC);
+    //parameters.set_local_search_metaheuristic(operations_research::LocalSearchMetaheuristic::GUIDED_LOCAL_SEARCH);
+    //parameters.mutable_time_limit()->set_seconds(1);
+
+    // Solve the problem
+    const operations_research::Assignment* solution = routing.SolveWithParameters(parameters);
+
+    vector<vector<int>> tours;
+    vector<int> tour;
+
+    if (solution != nullptr) {
+      for (int vehicle_id = 0; vehicle_id < drone_num; ++vehicle_id) {
+        int64_t index = routing.Start(vehicle_id);
+        while (!routing.IsEnd(index)) {
+            tour.push_back(manager.IndexToNode(index).value());
+            index = solution->Value(routing.NextVar(index));
+        }
+        tours.push_back(tour);
+        tour.clear();
+      }
+    }
+
+    for (int i = 0; i < tours.size(); ++i) {
+      if (tours[i].size() > 0) {
+        if (i == 0) {
+          ego_ids.insert(ego_ids.end(), tours[i].begin() + 1, tours[i].end());
+        } else {
+          other_ids.insert(other_ids.end(), tours[i].begin() + 1, tours[i].end());
+        }
+      }
+    }
+    for (auto& id : ego_ids) {
+      id = grid_ids[id]; // - 1 - drone_num];
+    }
+    for (auto& id : other_ids) {
+      id = grid_ids[id]; // - 1 - drone_num];
+    }
+
+    double mtsp_time = (ros::Time::now() - t1).toSec();
+    std::cout << "Allocation time: " << mtsp_time << std::endl;
+  }
+  else {
+    ROS_ERROR("Unknown library.");
+  }
+
 }
 
 double FastExplorationManager::computeGridPathCost(const Eigen::Vector3d& pos,
@@ -867,9 +1260,11 @@ double FastExplorationManager::computeGridPathCost(const Eigen::Vector3d& pos,
 
   double cost = 0.0;
   vector<Eigen::Vector3d> path;
-  cost += hgrid_->getCostDroneToGrid(pos, grid_ids[0], first);
+  Eigen::Vector3d velocities = {1, 1, 1}; // Line added due to turn cost added in getCostMatrix in hgrid.cpp
+  double yaw = 0.0;
+  cost += hgrid_->getCostDroneToGrid(pos, velocities, yaw, grid_ids[0], first);
   for (int i = 0; i < grid_ids.size() - 1; ++i) {
-    cost += hgrid_->getCostGridToGrid(grid_ids[i], grid_ids[i + 1], firsts, seconds, firsts.size());
+    cost += hgrid_->getCostGridToGrid(grid_ids[i], grid_ids[i + 1], velocities, firsts, seconds, firsts.size());
   }
   return cost;
 }
@@ -902,12 +1297,16 @@ bool FastExplorationManager::findGlobalTourOfGrid(const vector<Eigen::Vector3d>&
   for (auto id : grid_ids) std::cout << id << ", ";
   std::cout << "" << std::endl;
 
-  Eigen::MatrixXd mat;
+  Eigen::MatrixXd mat, mat2;
   // uniform_grid_->getCostMatrix(positions, velocities, first_ids, grid_ids, mat);
+
+  //ROS_ERROR("Drone 1 vel: %lf, %lf, %lf", velocities[0][0], velocities[0][1], velocities[0][2]);
+  //ROS_ERROR("Drone 2 vel: %lf, %lf, %lf", velocities[1][0], velocities[1][1], velocities[1][2]);
+
   if (!init)
-    hgrid_->getCostMatrix(positions, velocities, { first_ids }, { second_ids }, grid_ids, mat);
+    hgrid_->getCostMatrix(positions, velocities, {0.0, 0.0},{ first_ids }, { second_ids }, grid_ids, mat, mat2);
   else
-    hgrid_->getCostMatrix(positions, velocities, { {} }, { {} }, grid_ids, mat);
+    hgrid_->getCostMatrix(positions, velocities, {0.0, 0.0},{ {} }, { {} }, grid_ids, mat, mat2);
 
   double mat_time = (ros::Time::now() - t1).toSec();
 

@@ -7,6 +7,8 @@
 
 namespace fast_planner {
 
+string lib = "lkh";
+
 HGrid::HGrid(const shared_ptr<EDTEnvironment>& edt, ros::NodeHandle& nh) {
 
   this->edt_ = edt;
@@ -14,6 +16,8 @@ HGrid::HGrid(const shared_ptr<EDTEnvironment>& edt, ros::NodeHandle& nh) {
   nh.param("partitioning/consistent_cost2", consistent_cost2_, 3.5);
   nh.param("partitioning/use_swarm_tf", use_swarm_tf_, false);
   nh.param("partitioning/w_first", w_first_, 1.0);
+
+  nh.param("exploration/lib", lib, string("lkh"));
 
   path_finder_.reset(new Astar);
   path_finder_->init(nh, edt);
@@ -37,7 +41,11 @@ HGrid::HGrid(const shared_ptr<EDTEnvironment>& edt, ros::NodeHandle& nh) {
   // }
   grid1_->initGridData();
   grid2_->initGridData();
+  
+  
   updateBaseCoor();
+  // It iterates over all grid cells in grid_data_ and updates their vertices, minimum and maximum coordinates (vmin_, vmax_), and normals.
+
 }
 
 HGrid::~HGrid() {
@@ -275,8 +283,8 @@ void HGrid::fineToCoarseId(const int& fine, int& coarse) {
 }
 
 void HGrid::getCostMatrix(const vector<Eigen::Vector3d>& positions,
-    const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
-    const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat) {
+    const vector<Eigen::Vector3d>& velocities, const vector<double>& yaws, const vector<vector<int>>& first_ids,
+    const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat, Eigen::MatrixXd& mat2) {
   // first_ids and second_ids are drone_num x 1-4 vectors
 
   // Fill the cost matrix
@@ -284,6 +292,7 @@ void HGrid::getCostMatrix(const vector<Eigen::Vector3d>& positions,
   const int grid_num = grid_ids.size();
   const int dimen = 1 + drone_num + grid_num;
   mat = Eigen::MatrixXd::Zero(dimen, dimen);
+  mat2 = Eigen::MatrixXd::Zero(dimen, dimen);
 
   // std::cout << "First id: ";
   // for (auto ids : first_ids)
@@ -301,44 +310,71 @@ void HGrid::getCostMatrix(const vector<Eigen::Vector3d>& positions,
   for (int i = 0; i < drone_num; ++i) {
     mat(0, 1 + i) = -1000;
     mat(1 + i, 0) = 1000;
+
+    mat2(0, 1 + i) = -1000;
+    mat2(1 + i, 0) = 1000;
   }
   // Virtual depot to grid
   for (int i = 0; i < grid_num; ++i) {
     mat(0, 1 + drone_num + i) = 1000;
     mat(1 + drone_num + i, 0) = 0;
+
+    mat2(0, 1 + drone_num + i) = 1000;
+    mat2(1 + drone_num + i, 0) = 0;
   }
   // Costs between drones
   for (int i = 0; i < drone_num; ++i) {
     for (int j = 0; j < drone_num; ++j) {
       mat(1 + i, 1 + j) = 10000;
+      mat2(1 + i, 1 + j) = 10000;
     }
   }
+
+  //ROS_ERROR("velocities 1: %f, %f, %f", velocities[0][0], velocities[0][1], velocities[0][2]);
+  //ROS_ERROR("velocities 2: %f, %f, %f", velocities[1][0], velocities[1][1], velocities[1][2]);
 
   // Costs from drones to grid
   for (int i = 0; i < drone_num; ++i) {
     for (int j = 0; j < grid_num; ++j) {
-      double cost = getCostDroneToGrid(positions[i], grid_ids[j], first_ids[i]);
+
+      double cost = getCostDroneToGrid(positions[i], velocities[i], yaws[i], grid_ids[j], first_ids[i]);
+
       mat(1 + i, 1 + drone_num + j) = cost;
       mat(1 + drone_num + j, 1 + i) = 0;
+      
+      mat2(1 + i, 1 + drone_num + j) = cost;
+      mat2(1 + drone_num + j, 1 + i) = 0;
+
     }
   }
+
   // Costs between grid
-  for (int i = 0; i < grid_num; ++i) {
-    for (int j = i + 1; j < grid_num; ++j) {
-      double cost = getCostGridToGrid(grid_ids[i], grid_ids[j], first_ids, second_ids, drone_num);
-      mat(1 + drone_num + i, 1 + drone_num + j) = cost;
-      mat(1 + drone_num + j, 1 + drone_num + i) = cost;
+  for (int k = 0; k < drone_num; ++k) {
+    for (int i = 0; i < grid_num; ++i) {
+      for (int j = i + 1; j < grid_num; ++j) {
+        double cost = getCostGridToGrid(grid_ids[i], grid_ids[j], velocities[k], first_ids, second_ids, drone_num);
+        
+        if (k ==0) {
+          mat(1 + drone_num + i, 1 + drone_num + j) = cost;
+          mat(1 + drone_num + j, 1 + drone_num + i) = cost;
+        } else {
+          mat2(1 + drone_num + i, 1 + drone_num + j) = cost;
+          mat2(1 + drone_num + j, 1 + drone_num + i) = cost;
+        }
+      }
     }
   }
 
   // Diag
   for (int i = 0; i < dimen; ++i) {
     mat(i, i) = 1000;
+    mat2(i, i) = 1000;
   }
+
 }
 
 double HGrid::getCostDroneToGrid(
-    const Eigen::Vector3d& pos, const int& grid_id, const vector<int>& first) {
+    const Eigen::Vector3d& pos, const Eigen::Vector3d& vel, const double& yaw, const int& grid_id, const vector<int>& first) {
   auto& grid = getGrid(grid_id);
   double dist1, cost;
   dist1 = (pos - grid.center_).norm();
@@ -348,25 +384,75 @@ double HGrid::getCostDroneToGrid(
       auto path = path_finder_->getPath();
       cost = path_finder_->pathLength(path);
     } else {
-      cost = dist1 + consistent_cost2_;
+      if (lib == "lkh") {
+        cost = dist1 + consistent_cost2_;
+      } 
+      else {
+        cost = 1.5 * dist1;
+      }
     }
   } else {
-    cost = 1.5 * dist1 + consistent_cost2_;
+    if (lib == "lkh") {
+      cost = 1.5 * dist1 + consistent_cost2_;
+    } 
+    else {
+    cost = 1.5 * dist1;
+    }
   }
+  
   // Consistency cost with previous first grid
   if (!first.empty()) {
     for (auto first_id : first) {
       if (grid_id == first_id) {
-        cost += consistent_cost_;
+        if (lib == "lkh") {
+          cost += consistent_cost_;
+        }
+        else {
+          cost += 0.0;
+        }
         break;
       }
     }
   }
-  // if (drone_num > 1) cost *= w_first_;
-  return cost;
+
+
+
+  /******************************** MY CODE ********************************/
+  if (lib == "lkh" || lib == "ortools_homo") {
+    //ROS_ERROR("LKH");
+    return cost;
+  }
+  else if (lib == "ortools_hetero") {
+    //ROS_ERROR("OR-Tools");
+
+    // Direction vector from grid center to drone
+    Eigen::Vector3d dir = pos - grid.center_;
+    Eigen::Vector3d orient = {cos(yaw), sin(yaw), 0.0};
+
+    // Compute the module of velocity
+    double vel_mod = 1 + vel.norm();
+    
+    // Angle between dir and velocity direction in radians
+    double alpha = acos(dir.dot(vel) / (dir.norm() * vel_mod));
+
+    // Cosine similarity between dir and velocity direction
+    //double cos_sim = dir.dot(vel) / (dir.norm() * vel_mod);
+    double cos_sim = dir.dot(orient) / (dir.norm() * orient.norm());
+    cos_sim = -0.5*cos_sim + 0.5;
+
+    // Add the turning cost to the total cost
+    cost = (cost / vel_mod) + 3*(cos_sim*vel_mod);
+
+    return cost;
+  }
+  else {
+    ROS_ERROR("Invalid library name");
+    return cost;
+  }
+
 }
 
-double HGrid::getCostGridToGrid(const int& id1, const int& id2, const vector<vector<int>>& firsts,
+double HGrid::getCostGridToGrid(const int& id1, const int& id2, const Eigen::Vector3d& vel, const vector<vector<int>>& firsts,
     const vector<vector<int>>& seconds, const int& drone_num) {
   auto& grid1 = getGrid(id1);
   auto& grid2 = getGrid(id2);
@@ -379,12 +465,22 @@ double HGrid::getCostGridToGrid(const int& id1, const int& id2, const vector<vec
       auto path = path_finder_->getPath();
       dist_cost = path_finder_->pathLength(path);
     } else {
-      dist_cost = (grid1.center_ - grid2.center_).norm() + consistent_cost2_;
+      if (lib == "lkh") {
+        dist_cost = (grid1.center_ - grid2.center_).norm() + consistent_cost2_;
+      }
+      else {
+        dist_cost = (grid1.center_ - grid2.center_).norm();
+      }
     }
 
     // Make level 2 grids in the same level 1 grid adhere together
     if (drone_num <= 1 && inSameLevel1(id1, id2)) {
-      dist_cost += consistent_cost_;
+      if (lib == "lkh") {
+        dist_cost += consistent_cost_;
+      }
+      else {
+        dist_cost += 0.0;
+      }
     }
 
     if (!firsts.empty()) {
@@ -408,16 +504,63 @@ double HGrid::getCostGridToGrid(const int& id1, const int& id2, const vector<vec
         if (is_first && is_second) break;
       }
       if (is_first && is_second) {
-        dist_cost += consistent_cost_;
+        if (lib == "lkh") {
+          dist_cost += consistent_cost_;
+        }
+        else {
+          dist_cost += 0.0;
+        }
       }
     }
   } else {
     // Not nearby grids, approximate cost by straight line dist
     // double dist_cost = 1.5 * (grid1.center_ - grid2.center_).norm() - consistent_cost_;
-    dist_cost = 1.5 * (grid1.center_ - grid2.center_).norm() + consistent_cost2_;
+    if (lib == "lkh") {
+      dist_cost = 1.5 * (grid1.center_ - grid2.center_).norm() + consistent_cost2_;
+    }
+    else {
+      dist_cost = 1.5 * (grid1.center_ - grid2.center_).norm();
+    }
     // double dist_cost = (grid1.center_ - grid2.center_).norm();
   }
-  return dist_cost;
+
+  // ROS_ERROR("vel: %f, %f, %f", vel[0], vel[1], vel[2]);
+  
+
+  /******************************** MY CODE ********************************/
+  if (lib == "lkh" || lib == "ortools_homo") {
+    return dist_cost;
+  }
+  else if (lib == "ortools_hetero") {
+    // Direction vector from the center of grid1 to the center of grid2
+    Eigen::Vector3d dir = grid1.center_ - grid2.center_;
+
+    // Compute the module of velocity
+    double vel_mod = 1+vel.norm();
+    //ROS_ERROR("vel_mod: %f", vel_mod);
+
+    // Angle between dir and velocity direction in radians
+    double alpha = acos(dir.dot(vel) / (dir.norm() * vel_mod));
+
+    // Cosine similarity between dir and velocity direction
+    double cos_sim = dir.dot(vel) / (dir.norm() * vel_mod);
+    if (cos_sim < -1 || cos_sim > 1) {
+      ROS_ERROR("cos_sim: %f", cos_sim);
+    }
+
+    cos_sim = -0.5*cos_sim + 0.5;
+
+    // Add the turning cost to the total cost
+    dist_cost = (dist_cost / vel_mod) + 3*(cos_sim * vel_mod);
+
+    //ROS_ERROR("dist_cost: %f", dist_cost);
+
+    return dist_cost;
+  }
+  else {
+    ROS_ERROR("Invalid library name");
+    return dist_cost;
+  }
 }
 
 int HGrid::getUnknownCellsNum(const int& grid_id) {

@@ -1,0 +1,22 @@
+sdf_map/local_bound_inflate: 0.5
+sdf_map/local_map_margin: 100
+sdf_map/ground_height: -1.0
+sdf_map/default_dist: 0.5
+
+sdf_map/p_hit: 0.65
+sdf_map/p_miss: 0.35
+sdf_map/p_min: 0.12
+sdf_map/p_max: 0.90
+sdf_map/p_occ: 0.80
+sdf_map/min_ray_length: 0.5
+sdf_map/max_ray_length: 4.5
+sdf_map/virtual_ceil_height: -10
+sdf_map/optimistic: true
+sdf_map/signed_dist: false
+sdf_map/box_min_x: -5
+sdf_map/box_min_y: -30
+sdf_map/box_min_z: 0
+sdf_map/box_max_x: 10
+sdf_map/box_max_y: 20
+sdf_map/box_max_z: 1.7
+sdf_map/no_drone_1: false

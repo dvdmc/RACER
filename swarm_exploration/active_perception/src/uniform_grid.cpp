@@ -48,9 +48,9 @@ UniformGrid::~UniformGrid() {
 }
 
 void UniformGrid::initGridData() {
-  Eigen::Vector3d size = max_ - min_;
-  for (int i = 0; i < 3; ++i) grid_num_(i) = ceil(size(i) / resolution_[i]);
-  grid_data_.resize(grid_num_[0] * grid_num_[1] * grid_num_[2]);
+  Eigen::Vector3d size = max_ - min_; // Size of the grid
+  for (int i = 0; i < 3; ++i) grid_num_(i) = ceil(size(i) / resolution_[i]); // Number of grids in each dimension
+  grid_data_.resize(grid_num_[0] * grid_num_[1] * grid_num_[2]); // Resize the grid data vector
 
   std::cout << "data size: " << grid_data_.size() << std::endl;
   std::cout << "grid num: " << grid_num_.transpose() << std::endl;
@@ -61,31 +61,37 @@ void UniformGrid::initGridData() {
     for (int y = 0; y < grid_num_[1]; ++y) {
       for (int z = 0; z < grid_num_[2]; ++z) {
         Eigen::Vector3i id(x, y, z);
-        auto& grid = grid_data_[toAddress(id)];
+        auto& grid = grid_data_[toAddress(id)]; // Gets a reference to the cell's data in the grid_data_ vector
+        // toAddress() takes a 3D grid cell index (Eigen::Vector3i& id) as input and returns a 1D address (int) 
+        // that represents the same cell in a 1D array
+
 
         Eigen::Vector3d pos;
-        indexToPos(id, 0.5, pos);
+        indexToPos(id, 0.5, pos); // Computes the position of the center of the grid cell
         if (use_swarm_tf_) {
-          pos = rot_sw_ * pos + trans_sw_;
+          pos = rot_sw_ * pos + trans_sw_; // Transforms the position of the center of the grid cell if the swarm tf is used
         }
 
-        grid.center_ = pos;
-        grid.unknown_num_ = resolution_[0] * resolution_[1] * resolution_[2] /
-                            pow(edt_->sdf_map_->getResolution(), 3);
+        grid.center_ = pos; // Sets the center of the grid cell with the computed center (pos)
+        grid.unknown_num_ = resolution_[0] * resolution_[1] * resolution_[2] / pow(edt_->sdf_map_->getResolution(), 3); 
+        // Computes the number of unknown elements in the grid cell
+        // How many smaller "sub-cells" within the larger grid cell are unknown
 
-        grid.is_prev_relevant_ = true;
-        grid.is_cur_relevant_ = true;
-        grid.need_divide_ = false;
+        grid.is_prev_relevant_ = true; // Sets the previous relevance of the grid cell to true
+        grid.is_cur_relevant_ = true; // Sets the current relevance of the grid cell to true
+        grid.need_divide_ = false; // Sets the need to divide the grid cell to false
         if (level_ == 1)
-          grid.active_ = true;
+          grid.active_ = true; // Coarse level
         else
-          grid.active_ = false;
+          grid.active_ = false; // Fine level
       }
     }
   }
 }
 
-void UniformGrid::updateBaseCoor() {
+void UniformGrid::updateBaseCoor() { 
+  // It iterates over all grid cells in grid_data_ and updates their vertices, minimum and maximum coordinates (vmin_, vmax_), and normals
+
   for (int i = 0; i < grid_data_.size(); ++i) {
     auto& grid = grid_data_[i];
     // if (!grid.active_) continue;
@@ -139,8 +145,8 @@ void UniformGrid::updateBaseCoor() {
   }
 }
 
-void UniformGrid::updateGridData(const int& drone_id, vector<int>& grid_ids, vector<int>& parti_ids,
-    vector<int>& parti_ids_all) {
+void UniformGrid::updateGridData(const int& drone_id, vector<int>& grid_ids, vector<int>& parti_ids, vector<int>& parti_ids_all) {
+  // It updates the grid data based on the drone's current position and the updated map.
 
   // parti_ids are ids of grids that are assigned to THIS drone and should be divided
   // parti_ids_all are ids of ALL grids that should be divided
@@ -152,41 +158,45 @@ void UniformGrid::updateGridData(const int& drone_id, vector<int>& grid_ids, vec
 
   bool reset = (level_ == 2);
   Vector3d update_min, update_max;
-  edt_->sdf_map_->getUpdatedBox(update_min, update_max, reset);
+  edt_->sdf_map_->getUpdatedBox(update_min, update_max, reset); // Gets the updated bounding box of the map (entire map)
 
   vector<Eigen::Vector3d> update_mins, update_maxs;
-  edt_->sdf_map_->mm_->getChunkBoxes(update_mins, update_maxs, reset);
+  edt_->sdf_map_->mm_->getChunkBoxes(update_mins, update_maxs, reset); // Gets the updated chunk boxes of the map (portions of the map)
 
   // Rediscovered grid
   vector<int> rediscovered_ids;
 
-  auto have_overlap = [](
-      const Vector3d& min1, const Vector3d& max1, const Vector3d& min2, const Vector3d& max2) {
+  auto have_overlap = [](const Vector3d& min1, const Vector3d& max1, const Vector3d& min2, const Vector3d& max2) {
+    // Checks if two boxes overlap
+    // min[] and max[] define the size of the map
     for (int m = 0; m < 2; ++m) {
-      double bmin = max(min1[m], min2[m]);
-      double bmax = min(max1[m], max2[m]);
-      if (bmin > bmax + 1e-3) return false;
+      double bmin = max(min1[m], min2[m]); // Gets the maximum of the minimum coordinates
+      double bmax = min(max1[m], max2[m]); // Gets the minimum of the maximum coordinates
+      if (bmin > bmax + 1e-3) return false; // If this happens, the boxes do not overlap in the current dimension
     }
-    return true;
+    return true; // If the boxes overlap in both dimensions, return true
   };
 
   // For each grid, check overlap with updated box and update it if necessary
   for (int i = 0; i < grid_data_.size(); ++i) {
     auto& grid = grid_data_[i];
-    if (!grid.active_) continue;
+    if (!grid.active_) continue; // If the current cell grid is not active (unknown), skip the rest of the iteration
 
     // Check overlap with updated boxes
     bool overlap = false;
     for (int j = 0; j < update_mins.size(); ++j) {
       if (have_overlap(grid.vmin_, grid.vmax_, update_mins[j], update_maxs[j])) {
+        // Check overlap using the lambda function defined above
         overlap = true;
         break;
       }
     }
     bool overlap_with_fov = have_overlap(grid.vmin_, grid.vmax_, update_min, update_max);
     if (!overlap && !overlap_with_fov) continue;
+    // This line checks if the current grid cell (defined by its minimum and maximum coordinates grid.vmin_ and grid.vmax_)
+    // overlaps with the updated field of view (defined by update_min and update_max). If it doesn't overlap, skip the rest of the iteration.
 
-    // Update the grid
+    // Update the grid, if the grid cell does overlap
     Eigen::Vector3i idx;
     adrToIndex(i, idx);
     updateGridInfo(idx);
@@ -294,11 +304,17 @@ void UniformGrid::updateGridInfo(const Eigen::Vector3i& id) {
           free += 1;
         } else if (state == SDFMap::UNKNOWN) {
           grid.center_ = (grid.center_ * grid.unknown_num_ + pos) / (grid.unknown_num_ + 1);
+          // This effectively makes the center of the grid the centroid of all unknown voxels.
           grid.unknown_num_ += 1;
         }
       }
     }
   }
+  // The triple nested for-loop iterates over all voxels in the grid cell. For each voxel, 
+  // it checks if the voxel is inside the rotated box. If it is, it gets the occupancy state of the voxel. 
+  // If the voxel is free, it increments the count of free voxels. If the voxel is unknown, 
+  // it updates the center of the grid cell and increments the count of unknown voxels.
+
 
   grid.is_cur_relevant_ = isRelevant(grid);
 
@@ -307,7 +323,7 @@ void UniformGrid::updateGridInfo(const Eigen::Vector3i& id) {
   //      << ", rele: " << grid.is_cur_relevant_ << endl;
 
   if (level_ == 1 && grid.active_ && free > min_free_) {
-    grid.need_divide_ = true;
+    grid.need_divide_ = true; // If the grid cell is active and the number of free voxels is greater than min_free_, set need_divide_ to true
   }
 }
 

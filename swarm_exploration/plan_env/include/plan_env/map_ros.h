@@ -1,6 +1,7 @@
 #ifndef _MAP_ROS_H
 #define _MAP_ROS_H
 
+#include <std_msgs/Int32.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
@@ -68,7 +69,7 @@ private:
   SynchronizerCloudPose sync_cloud_pose_;
 
   ros::Publisher map_local_pub_, map_local_inflate_pub_, esdf_pub_, map_all_pub_, unknown_pub_,
-      update_range_pub_, depth_pub_;
+      update_range_pub_, depth_pub_, map_size_pub_;
   ros::Timer esdf_timer_, vis_timer_;
   ros::Subscriber basecoor_sub_;
 

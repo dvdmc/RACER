@@ -1,23 +1,27 @@
 <launch>
   <!-- size of map, change the size in x, y, z according to your application -->
-  <arg name="map_size_x" value="35.0"/>
-  <arg name="map_size_y" value="35.0"/>
+  <arg name="map_size_x" value="80.0"/>
+  <arg name="map_size_y" value="80.0"/>
   <arg name="map_size_z" value=" 3.5"/>
 
   <!-- Global odom prefix -->
   <arg name="odom_prefix" value="/state_ukf/odom" />
   <arg name="drone_num" value="5" />
 
-    <!-- Map generation -->
-  <!-- <node pkg ="map_generator" name ="map_pub" type ="map_pub" output = "screen" args="$(find map_generator)/resource/office.pcd">    
-  </node> -->
-  <node pkg ="map_generator" name ="map_pub" type ="map_pub" output = "screen" args="$(find map_generator)/resource/pillar.pcd">    
+  <!-- Map generation -->
+  <node pkg ="map_generator" name ="map_pub" type ="map_pub" output = "screen" args="$(find map_generator)/resource/office.pcd">
+    <param name="map_floor/x_min" value="-7.5" type="double"/>
+    <param name="map_floor/x_max" value="7.5" type="double"/>
+    <param name="map_floor/y_min" value="-15.0" type="double"/>
+    <param name="map_floor/y_max" value="15.0" type="double"/>
   </node>
+  <!-- <node pkg ="map_generator" name ="map_pub" type ="map_pub" output = "screen" args="$(find map_generator)/resource/pillar.pcd">    
+  </node> -->
 
-<include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
     <arg name="drone_id" value="1"/>
-    <arg name="init_x"   value="0"/>
-    <arg name="init_y"   value="0"/>
+    <arg name="init_x"   value="6.5"/>
+    <arg name="init_y"   value="14"/>
     <arg name="init_z"   value="1"/> 
     <arg name="map_size_x" value="$(arg map_size_x)"/>
     <arg name="map_size_y" value="$(arg map_size_y)"/>
@@ -29,8 +33,8 @@
 
   <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
     <arg name="drone_id" value="2"/>
-    <arg name="init_x"   value="0"/>
-    <arg name="init_y"   value="-1"/>
+    <arg name="init_x"   value="6.0"/>
+    <arg name="init_y"   value="14.5"/>
     <arg name="init_z"   value="1"/> 
     <arg name="map_size_x" value="$(arg map_size_x)"/>
     <arg name="map_size_y" value="$(arg map_size_y)"/>
@@ -40,10 +44,10 @@
     <arg name="simulation" default="true"/>
   </include>
 
-  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+  <!-- <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
     <arg name="drone_id" value="3"/>
-    <arg name="init_x"   value="1"/>
-    <arg name="init_y"   value="-1"/>
+    <arg name="init_x"   value="6"/>
+    <arg name="init_y"   value="-10"/>
     <arg name="init_z"   value="1"/> 
     <arg name="map_size_x" value="$(arg map_size_x)"/>
     <arg name="map_size_y" value="$(arg map_size_y)"/>
@@ -55,8 +59,8 @@
 
   <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
     <arg name="drone_id" value="4"/>
-    <arg name="init_x"   value="1"/>
-    <arg name="init_y"   value="0"/>
+    <arg name="init_x"   value="6"/>
+    <arg name="init_y"   value="13"/>
     <arg name="init_z"   value="1"/> 
     <arg name="map_size_x" value="$(arg map_size_x)"/>
     <arg name="map_size_y" value="$(arg map_size_y)"/>
@@ -66,7 +70,7 @@
     <arg name="simulation" default="true"/>
   </include>
 
-  <!-- <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
     <arg name="drone_id" value="5"/>
     <arg name="init_x"   value="1"/>
     <arg name="init_y"   value="1"/>
@@ -145,4 +149,6 @@
     <arg name="simulation" default="true"/>
   </include> -->
 
+
+  <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="-d $(find exploration_manager)/config/swarm_2.rviz" />
 </launch>

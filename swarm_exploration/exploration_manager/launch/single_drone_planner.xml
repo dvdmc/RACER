@@ -18,8 +18,10 @@
   <arg name="max_acc"/>
   <arg name="simulation" default="true"/>
   <arg name="single_expo" default="false"/>
+  <arg name="library"/>
+  <arg name="map"/>
 
-  <!-- main node -->
+  <!-- main node launch-prefix="xterm -e gdb (2 guiones aqui)args" -->
   <node pkg="exploration_manager" name="exploration_node_$(arg drone_id)" type="exploration_node" output="log">
     <remap from ="/odom_world" to="$(arg odometry_topic)"/>
     <remap from ="/map_ros/pose"   to = "$(arg sensor_pose_topic)"/> 
@@ -63,35 +65,8 @@
     <param name="sdf_map/map_size_y"   value="$(arg map_size_y)" /> 
     <param name="sdf_map/map_size_z"   value="$(arg map_size_z)" /> 
     <param name="sdf_map/obstacles_inflation"     value="0.199" /> 
-    <!-- <param name="sdf_map/obstacles_inflation"     value="0.0" />  -->
-    <param name="sdf_map/local_bound_inflate"    value="0.5"/>
-    <param name="sdf_map/local_map_margin" value="50"/>
-    <param name="sdf_map/ground_height"        value="-1.0"/>
-    <param name="sdf_map/default_dist"        value="0.5"/>
-    
-    <param name="sdf_map/p_hit"  value="0.65"/>
-    <param name="sdf_map/p_miss" value="0.35"/>
-    <param name="sdf_map/p_min"  value="0.12"/>
-    <param name="sdf_map/p_max"  value="0.90"/>
-    <param name="sdf_map/p_occ"  value="0.80"/>
-    <param name="sdf_map/min_ray_length" value="0.5"/>
-    <param name="sdf_map/max_ray_length" value="4.5"/>
-    <param name="sdf_map/virtual_ceil_height"   value="-10"/>
-    <param name="sdf_map/optimistic" value="true" type="bool"/>
-    <param name="sdf_map/signed_dist" value="false" type="bool"/>
-    <!-- <param name="sdf_map/box_min_x" value="-4" type="double"/>
-    <param name="sdf_map/box_min_y" value="-7" type="double"/>
-    <param name="sdf_map/box_min_z" value="0.0" type="double"/>
-    <param name="sdf_map/box_max_x" value="4" type="double"/>
-    <param name="sdf_map/box_max_y" value="7" type="double"/>
-    <param name="sdf_map/box_max_z" value="2.0" type="double"/> -->
-    <param name="sdf_map/box_min_x" value="-7" type="double"/>
-    <param name="sdf_map/box_min_y" value="-15" type="double"/>
-    <param name="sdf_map/box_min_z" value="0" type="double"/> 
-    <param name="sdf_map/box_max_x" value="7" type="double"/>
-    <param name="sdf_map/box_max_y" value="15" type="double"/>
-    <param name="sdf_map/box_max_z" value="1.7" type="double"/>
-    <param name="sdf_map/no_drone_1" value="false" type="bool"/>
+
+    <rosparam file="$(find exploration_manager)/config/drone_planner_params_$(arg map).yaml" />
 
     <param name="map_ros/cx" value="$(arg cx)"/>
     <param name="map_ros/cy" value="$(arg cy)"/>
@@ -124,6 +99,7 @@
 
     <param name="fsm/attempt_interval" value="0.1" type="double"/>
     <param name="fsm/pair_opt_interval" value="0.5" type="double"/>
+    <param name="fsm/initroutine" value="false" type="bool"/>
 
     <param name="partitioning/min_unknown" value="4000" type="int"/>;
     <param name="partitioning/min_frontier" value="100" type="int"/>;
@@ -135,6 +111,8 @@
     <param name="partitioning/use_swarm_tf" value="true" type="bool"/>;
 
     <!-- Exploration manager -->
+
+    <param name="exploration/lib" value="$(arg library)" type="string"/>
 
     <param name="exploration/refine_local" value="true" type="bool"/>
     <param name="exploration/refined_num" value="7" type="int"/>
@@ -190,7 +168,7 @@
     <param name="manager/max_jerk" value="4" type="double"/>
     <param name="manager/dynamic_environment" value="0" type="int"/>
     <param name="manager/local_segment_length" value="6.0" type="double"/>
-    <param name="manager/clearance_threshold" value="0.2" type="double"/>
+    <param name="manager/clearance_threshold" value="0.05" type="double"/>
     <param name="manager/control_points_distance" value="0.5" type="double"/>
     <param name="manager/use_geometric_path" value="true" type="bool"/>
     <param name="manager/use_kinodynamic_path" value="true" type="bool"/>

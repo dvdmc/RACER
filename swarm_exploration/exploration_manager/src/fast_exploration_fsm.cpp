@@ -1,4 +1,5 @@
 
+#include <ros/ros.h>
 #include <plan_manage/planner_manager.h>
 #include <exploration_manager/fast_exploration_manager.h>
 #include <traj_utils/planning_visualization.h>
@@ -34,6 +35,7 @@ void FastExplorationFSM::init(ros::NodeHandle& nh) {
   nh.param("fsm/attempt_interval", fp_->attempt_interval_, 0.2);
   nh.param("fsm/pair_opt_interval", fp_->pair_opt_interval_, 1.0);
   nh.param("fsm/repeat_send_num", fp_->repeat_send_num_, 10);
+  nh.param("fsm/initroutine", fp_->initroutine, false);
 
   /* Initialize main modules */
   expl_manager_.reset(new FastExplorationManager);
@@ -71,7 +73,7 @@ void FastExplorationFSM::init(ros::NodeHandle& nh) {
   drone_state_sub_ = nh.subscribe(
       "/swarm_expl/drone_state_recv", 10, &FastExplorationFSM::droneStateMsgCallback, this);
 
-  opt_timer_ = nh.createTimer(ros::Duration(0.05), &FastExplorationFSM::optTimerCallback, this);
+  opt_timer_ = nh.createTimer(ros::Duration(8.0), &FastExplorationFSM::optTimerCallback, this);
   opt_pub_ = nh.advertise<exploration_manager::PairOpt>("/swarm_expl/pair_opt_send", 10);
   opt_sub_ = nh.subscribe("/swarm_expl/pair_opt_recv", 100, &FastExplorationFSM::optMsgCallback,
       this, ros::TransportHints().tcpNoDelay());
@@ -89,15 +91,134 @@ void FastExplorationFSM::init(ros::NodeHandle& nh) {
 
   hgrid_pub_ = nh.advertise<exploration_manager::HGrid>("/swarm_expl/hgrid_send", 10);
   grid_tour_pub_ = nh.advertise<exploration_manager::GridTour>("/swarm_expl/grid_tour_send", 10);
+  metrics_bool = nh.advertise<std_msgs::Bool>("/metrics_bool", 1);
 }
 
 int FastExplorationFSM::getId() {
   return expl_manager_->ep_->drone_id_;
 }
 
+void FastExplorationFSM::initRoutine1() {
+
+
+  fd_->start_pt_ = fd_->odom_pos_;
+  //ROS_ERROR("fd_->start_pt_ = %f, %f, %f", fd_->start_pt_[0], fd_->start_pt_[1], fd_->start_pt_[2]);
+  fd_->start_vel_ = fd_->odom_vel_;
+  //ROS_ERROR("fd_->start_vel_ = %f, %f, %f", fd_->start_vel_[0], fd_->start_vel_[1], fd_->start_vel_[2]);
+  fd_->start_acc_.setZero();
+  //ROS_ERROR("fd_->start_acc_ = %f, %f, %f", fd_->start_acc_[0], fd_->start_acc_[1], fd_->start_acc_[2]);
+  fd_->start_yaw_ << fd_->odom_yaw_, 0, 0;
+  //ROS_ERROR("fd_->start_yaw_ = %f, %f, %f", fd_->start_yaw_[0], fd_->start_yaw_[1], fd_->start_yaw_[2]);
+
+  // Inform traj_server the replanning
+  replan_pub_.publish(std_msgs::Empty());
+
+  int res = expl_manager_->planTrajToView(fd_->start_pt_, fd_->start_vel_, fd_->start_acc_,
+    fd_->start_yaw_, Eigen::Vector3d(fd_->start_pt_[0], fd_->start_pt_[1], fd_->start_pt_[2] + 0.1), fd_->start_yaw_[2] + M_PI);
+
+  //ROS_ERROR("res = %d", res);
+
+  ros::Time time_r = ros::Time::now() + ros::Duration(fp_->replan_time_);
+
+  auto info = &planner_manager_->local_data_;
+  info->start_time_ = (ros::Time::now() - time_r).toSec() > 0 ? ros::Time::now() : time_r;
+
+  bspline::Bspline bspline;
+  bspline.order = planner_manager_->pp_.bspline_degree_;
+  bspline.start_time = info->start_time_;
+  bspline.traj_id = info->traj_id_;
+  Eigen::MatrixXd pos_pts = info->position_traj_.getControlPoint();
+  for (int i = 0; i < pos_pts.rows(); ++i) {
+    geometry_msgs::Point pt;
+    pt.x = pos_pts(i, 0);
+    pt.y = pos_pts(i, 1);
+    pt.z = pos_pts(i, 2);
+    bspline.pos_pts.push_back(pt);
+  }
+  Eigen::VectorXd knots = info->position_traj_.getKnot();
+  for (int i = 0; i < knots.rows(); ++i) {
+    bspline.knots.push_back(knots(i));
+  }
+  Eigen::MatrixXd yaw_pts = info->yaw_traj_.getControlPoint();
+  for (int i = 0; i < yaw_pts.rows(); ++i) {
+    double yaw = yaw_pts(i, 0);
+    bspline.yaw_pts.push_back(yaw);
+  }
+  bspline.yaw_dt = info->yaw_traj_.getKnotSpan();
+  fd_->newest_traj_ = bspline;
+  
+  bspline_pub_.publish(fd_->newest_traj_);
+  fd_->static_state_ = false;
+
+  fd_->newest_traj_.drone_id = expl_manager_->ep_->drone_id_;
+  swarm_traj_pub_.publish(fd_->newest_traj_);
+
+  thread vis_thread(&FastExplorationFSM::visualize, this, 2);
+  vis_thread.detach();
+}
+
+void FastExplorationFSM::initRoutine2() {
+  fd_->start_pt_ = fd_->odom_pos_;
+  //ROS_ERROR("fd_->start_pt_ = %f, %f, %f", fd_->start_pt_[0], fd_->start_pt_[1], fd_->start_pt_[2]);
+  fd_->start_vel_ = fd_->odom_vel_;
+  //ROS_ERROR("fd_->start_vel_ = %f, %f, %f", fd_->start_vel_[0], fd_->start_vel_[1], fd_->start_vel_[2]);
+  fd_->start_acc_.setZero();
+  //ROS_ERROR("fd_->start_acc_ = %f, %f, %f", fd_->start_acc_[0], fd_->start_acc_[1], fd_->start_acc_[2]);
+  fd_->start_yaw_ << fd_->odom_yaw_, 0, 0;
+  //ROS_ERROR("fd_->start_yaw_ = %f, %f, %f", fd_->start_yaw_[0], fd_->start_yaw_[1], fd_->start_yaw_[2]);
+
+  // Inform traj_server the replanning
+  replan_pub_.publish(std_msgs::Empty());
+
+  int res = expl_manager_->planTrajToView(fd_->start_pt_, fd_->start_vel_, fd_->start_acc_,
+    Eigen::Vector3d(M_PI, 0.0, 0.0), Eigen::Vector3d(fd_->start_pt_[0], fd_->start_pt_[1], fd_->start_pt_[2] - 0.1), fd_->start_yaw_[0]+2*M_PI);
+
+  //ROS_ERROR("res = %d", res);
+
+  ros::Time time_r = ros::Time::now() + ros::Duration(fp_->replan_time_);
+
+  auto info = &planner_manager_->local_data_;
+  info->start_time_ = (ros::Time::now() - time_r).toSec() > 0 ? ros::Time::now() : time_r;
+
+  bspline::Bspline bspline;
+  bspline.order = planner_manager_->pp_.bspline_degree_;
+  bspline.start_time = info->start_time_;
+  bspline.traj_id = info->traj_id_;
+  Eigen::MatrixXd pos_pts = info->position_traj_.getControlPoint();
+  for (int i = 0; i < pos_pts.rows(); ++i) {
+    geometry_msgs::Point pt;
+    pt.x = pos_pts(i, 0);
+    pt.y = pos_pts(i, 1);
+    pt.z = pos_pts(i, 2);
+    bspline.pos_pts.push_back(pt);
+  }
+  Eigen::VectorXd knots = info->position_traj_.getKnot();
+  for (int i = 0; i < knots.rows(); ++i) {
+    bspline.knots.push_back(knots(i));
+  }
+  Eigen::MatrixXd yaw_pts = info->yaw_traj_.getControlPoint();
+  for (int i = 0; i < yaw_pts.rows(); ++i) {
+    double yaw = yaw_pts(i, 0);
+    bspline.yaw_pts.push_back(yaw);
+  }
+  bspline.yaw_dt = info->yaw_traj_.getKnotSpan();
+  fd_->newest_traj_ = bspline;
+  
+  bspline_pub_.publish(fd_->newest_traj_);
+  fd_->static_state_ = false;
+
+  fd_->newest_traj_.drone_id = expl_manager_->ep_->drone_id_;
+  swarm_traj_pub_.publish(fd_->newest_traj_);
+
+  thread vis_thread(&FastExplorationFSM::visualize, this, 2);
+  vis_thread.detach();
+}
+
 void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
   ROS_INFO_STREAM_THROTTLE(
       1.0, "[FSM]: Drone " << getId() << " state: " << fd_->state_str_[int(state_)]);
+  //ROS_ERROR("fd_->start_yaw_ = %f, %f, %f", fd_->start_yaw_[0], fd_->start_yaw_[1], fd_->start_yaw_[2]);
+  //ROS_ERROR("odom_orient: %f, %f, %f, %f", fd_->odom_orient_.w(), fd_->odom_orient_.x(), fd_->odom_orient_.y(), fd_->odom_orient_.z());
 
   switch (state_) {
     case INIT: {
@@ -116,8 +237,19 @@ void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
     }
 
     case WAIT_TRIGGER: {
+
+      if(fp_->initroutine == true)
+      { 
+        sleep(1);
+        initRoutine1();
+        sleep(3);
+        initRoutine2();
+        //sleep(3);
+        fp_->initroutine = false;
+      }
+
       // Do nothing but wait for trigger
-      ROS_WARN_THROTTLE(1.0, "wait for trigger.");
+      ROS_WARN_THROTTLE(1.0, "wait for trigger."); 
       break;
     }
 
@@ -562,6 +694,12 @@ void FastExplorationFSM::frontierCallback(const ros::TimerEvent& e) {
     expl_manager_->updateFrontierStruct(fd_->odom_pos_);
 
     cout << "odom: " << fd_->odom_pos_.transpose() << endl;
+    
+    
+    // Añado esto porque salen valores de velocidad muy altosa veces (bug)
+    //if (fd_->odom_vel_[0] > 3.0 || fd_->odom_vel_[1] > 3.0 || fd_->odom_vel_[2] > 3.0) { fd_->odom_vel_[0] = 0.0; fd_->odom_vel_[1] = 0.0; fd_->odom_vel_[2] = 0.0;}
+    
+    
     vector<int> tmp_id1;
     vector<vector<int>> tmp_id2;
     bool status = expl_manager_->findGlobalTourOfGrid(
@@ -606,6 +744,8 @@ void FastExplorationFSM::triggerCallback(const geometry_msgs::PoseStampedConstPt
 
   if (state_ != WAIT_TRIGGER) return;
   fd_->trigger_ = true;
+  m_bool.data = true;  
+  metrics_bool.publish(m_bool);
   cout << "Triggered!" << endl;
   fd_->start_pos_ = fd_->odom_pos_;
   ROS_WARN_STREAM("Start expl pos: " << fd_->start_pos_.transpose());
@@ -717,6 +857,7 @@ void FastExplorationFSM::optTimerCallback(const ros::TimerEvent& e) {
 
   // Select nearby drone not interacting with recently
   auto& states = expl_manager_->ed_->swarm_state_;
+
   auto& state1 = states[getId() - 1];
   // bool urgent = (state1.grid_ids_.size() <= 1 /* && !state1.grid_ids_.empty() */);
   bool urgent = state1.grid_ids_.empty();
@@ -770,8 +911,17 @@ void FastExplorationFSM::optTimerCallback(const ros::TimerEvent& e) {
   opt_ids.insert(opt_ids.end(), missed.begin(), missed.end());
 
   // Do partition of the grid
-  vector<Eigen::Vector3d> positions = { state1.pos_, state2.pos_ };
-  vector<Eigen::Vector3d> velocities = { Eigen::Vector3d(0, 0, 0), Eigen::Vector3d(0, 0, 0) };
+  vector<Eigen::Vector3d> positions = { state1.pos_, state2.pos_ }; 
+  //vector<Eigen::Vector3d> velocities = { Eigen::Vector3d(0, 0, 0), Eigen::Vector3d(0, 0, 0) };
+  vector<Eigen::Vector3d> velocities = { state1.vel_, state2.vel_ };
+  vector<double> yaws = { state1.yaw_, state2.yaw_ };
+
+  // double yaw;
+  // yaw  = atan2(2.0f * (fd_->odom_orient_.w() * fd_->odom_orient_.z() + fd_->odom_orient_.x() * fd_->odom_orient_.y()), fd_->odom_orient_.w() * fd_->odom_orient_.w() + fd_->odom_orient_.x() * fd_->odom_orient_.x() - fd_->odom_orient_.y() * fd_->odom_orient_.y() - fd_->odom_orient_.z() * fd_->odom_orient_.z());
+  // ROS_ERROR("Yaw orient: %lf", yaw);
+  // ROS_ERROR("Yaw state1: %lf", state1.yaw_);
+  // ROS_ERROR("Yaw state2: %lf", state2.yaw_);
+
   vector<int> first_ids1, second_ids1, first_ids2, second_ids2;
   if (state_ != WAIT_TRIGGER) {
     expl_manager_->hgrid_->getConsistentGrid(
@@ -780,10 +930,13 @@ void FastExplorationFSM::optTimerCallback(const ros::TimerEvent& e) {
         state2.grid_ids_, state2.grid_ids_, first_ids2, second_ids2);
   }
 
+  //ROS_ERROR("Drone 1 vel: %lf, %lf, %lf", state1.vel_[0], state1.vel_[1], state1.vel_[2]);
+  //ROS_ERROR("Drone 2 vel: %lf, %lf, %lf", state2.vel_[0], state2.vel_[1], state2.vel_[2]);
+
   auto t1 = ros::Time::now();
 
   vector<int> ego_ids, other_ids;
-  expl_manager_->allocateGrids(positions, velocities, { first_ids1, first_ids2 },
+  expl_manager_->allocateGrids(positions, velocities, yaws, { first_ids1, first_ids2 },
       { second_ids1, second_ids2 }, opt_ids, ego_ids, other_ids);
 
   double alloc_time = (ros::Time::now() - t1).toSec();
@@ -811,7 +964,7 @@ void FastExplorationFSM::optTimerCallback(const ros::TimerEvent& e) {
       { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
   std::cout << "cur cost : " << cur_app1 << ", " << cur_app2 << ", " << cur_app1 + cur_app2
             << std::endl;
-  if (cur_app1 + cur_app2 > prev_app1 + prev_app2 + 0.1) {
+  if (cur_app1 + cur_app2 > prev_app1 + prev_app2 + 0.1 + 10000) {
     ROS_ERROR("Larger cost after reallocation");
     if (state_!=WAIT_TRIGGER) {
       return;

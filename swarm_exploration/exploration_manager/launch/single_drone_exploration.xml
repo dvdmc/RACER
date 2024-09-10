@@ -3,9 +3,11 @@
     <arg name="drone_num" default="1"/> <!-- to determine salesman number, etc -->
     <arg name="init_x" default="0"/>
     <arg name="init_y" default="0"/>
-    <arg name="init_z" default="0"/> 
-    <arg name="map_size_x" default="22"/>
-    <arg name="map_size_y" default="22"/>
+    <arg name="init_z" default="0"/>
+    <arg name="init_orw" default="1.0"/>  
+    <arg name="init_orz" default="0.0"/>  
+    <arg name="map_size_x" default="100"/>
+    <arg name="map_size_y" default="100"/>
     <arg name="map_size_z" default="3.5"/>
     <arg name="odom_prefix" default="odom"/>
     <arg name="simulation" default="false"/>
@@ -17,7 +19,10 @@
     <arg name="cy" default="239.10362243652344"/>
     <arg name="fx" default="385.69793701171875"/>
     <arg name="fy" default="385.69793701171875"/>
-
+    <arg name="vel" default="1.5"/>
+    <arg name="acc" default="1.0"/>    
+    <arg name="library" default="lkh"/>
+    <arg name="map" default="office"/>    
 
   <!-- main algorithm params -->
   <include file="$(find exploration_manager)/launch/single_drone_planner.xml">
@@ -46,11 +51,20 @@
     <arg name="fy" value="$(arg fy)"/>
 
     <!-- maximum velocity and acceleration the drone will reach -->
-    <arg name="max_vel" value="1.5" />
-    <arg name="max_acc" value="1.0" />
+    <!-- <arg name="max_vel" value="1.5" /> DEFAULT -->
+    <!-- <arg name="max_vel" value="1.0" />
+    <arg name="max_acc" value="0.65" />  -->
+    <!-- <arg name="max_vel" value="1.5" />
+    <arg name="max_acc" value="1.0" /> -->
+    <arg name="max_vel" value="$(arg vel)" />
+    <arg name="max_acc" value="$(arg acc)" />    
     <!-- <arg name="max_vel" value="1.0" />
     <arg name="max_acc" value="0.8" /> -->
     <arg name="simulation" value="$(arg simulation)" />
+    
+    <arg name="library" value="$(arg library)"/>   
+    <arg name="map" value="$(arg map)"/>
+
   </include>
 
   <!-- trajectory server -->
@@ -83,7 +97,9 @@
     <arg name="drone_num" value="$(arg drone_num)"/>
     <arg name="init_x"   value="$(arg init_x)"/>
     <arg name="init_y"   value="$(arg init_y)"/>
-    <arg name="init_z"   value="$(arg init_z)"/> 
+    <arg name="init_z"   value="$(arg init_z)"/>
+    <arg name="init_orw" default="$(arg init_orw)"/> 
+    <arg name="init_orz" default="$(arg init_orz)"/> 
     <arg name="map_size_x" value="$(arg map_size_x)"/>
     <arg name="map_size_y" value="$(arg map_size_y)"/>
     <arg name="map_size_z" value="$(arg map_size_z)"/>

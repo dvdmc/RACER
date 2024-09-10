@@ -6,6 +6,7 @@
 #include <ros/ros.h>
 #include <nav_msgs/Path.h>
 #include <std_msgs/Empty.h>
+#include "std_msgs/Bool.h"
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
 #include <exploration_manager/DroneState.h>
@@ -54,6 +55,8 @@ private:
   void visualize(int content);
   void clearVisMarker();
   int getId();
+  void initRoutine1();
+  void initRoutine2();
   void findUnallocated(const vector<int>& actives, vector<int>& missed);
 
   /* ROS functions */
@@ -85,13 +88,16 @@ private:
   ros::NodeHandle node_;
   ros::Timer exec_timer_, safety_timer_, vis_timer_, frontier_timer_;
   ros::Subscriber trigger_sub_, odom_sub_;
-  ros::Publisher replan_pub_, new_pub_, bspline_pub_;
+  ros::Publisher replan_pub_, new_pub_, bspline_pub_, metrics_bool;
 
   // Swarm state
   ros::Publisher drone_state_pub_, opt_pub_, opt_res_pub_, swarm_traj_pub_, grid_tour_pub_,
       hgrid_pub_;
   ros::Subscriber drone_state_sub_, opt_sub_, opt_res_sub_, swarm_traj_sub_;
   ros::Timer drone_state_timer_, opt_timer_, swarm_traj_timer_;
+
+  std_msgs::Bool m_bool;
+
 };
 
 }  // namespace fast_planner

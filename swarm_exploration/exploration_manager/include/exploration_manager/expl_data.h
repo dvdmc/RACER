@@ -35,6 +35,7 @@ struct FSMParam {
   double replan_thresh2_;
   double replan_thresh3_;
   double replan_time_;  // second
+  bool initroutine;
 
   // Swarm
   double attempt_interval_;   // Min interval of opt attempt
@@ -108,6 +109,7 @@ struct ExplorationParam {
   string mtsp_dir_;  // resource dir of tsp solver
   double relax_time_;
   int init_plan_num_;
+  string lib;
 
   // Swarm
   int drone_num_;

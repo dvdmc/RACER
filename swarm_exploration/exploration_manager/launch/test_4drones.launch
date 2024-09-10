@@ -1,0 +1,154 @@
+<launch>
+  <!-- size of map, change the size in x, y, z according to your application -->
+  <arg name="map_size_x" value="100.0"/>
+  <arg name="map_size_y" value="100.0"/>
+  <arg name="map_size_z" value="3.5"/>
+
+  <!-- Global odom prefix -->
+  <arg name="odom_prefix" value="/state_ukf/odom" />
+  <arg name="drone_num" value="5" />
+
+
+  <!-- Vel and Acc params -->
+  <arg name="x1" default="-6.5" />
+  <arg name="y1" default="-13.5" />
+  <arg name="orw1" default="1.0" />
+  <arg name="orz1" default="0.0" />
+  <arg name="x2" default="4.5" />
+  <arg name="y2" default="-13.5" />
+  <arg name="orw2" default="0.0" />
+  <arg name="orz2" default="-1.0" />
+  <arg name="x3" default="-6.5" />
+  <arg name="y3" default="13.5" />
+  <arg name="orw3" default="1.0" />
+  <arg name="orz3" default="0.0" />
+  <arg name="x4" default="3.5" />
+  <arg name="y4" default="13.5" />
+  <arg name="orw4" default="0.0" />
+  <arg name="orz4" default="-1.0" />
+
+  <!-- Vel and Acc params -->
+  <arg name="vel1" default="1.5" />
+  <arg name="acc1" default="1.0" />
+  <arg name="vel2" default="1.5" />
+  <arg name="acc2" default="1.0" />
+
+  <!-- Library -->
+  <!-- [lkh, ortools_homo, ortools_hetero] -->
+  <arg name="library" default="ortools_homo" />
+
+  <!-- Map -->
+  <!-- [office, pillar, rooms1, rooms2] -->
+  <arg name="map" default="pillar" />
+
+  <!-- Save Directory -->
+  <arg name="save_dir" default="/home/juan/Documents/" />
+  <arg name="contador_max" default="1500" />
+
+  <!-- Map generation -->
+  <node pkg ="map_generator" name ="map_pub" type ="map_pub" output = "screen" args="$(find map_generator)/resource/$(arg map).pcd">
+    <rosparam file="$(find exploration_manager)/config/map_floor_$(arg map).yaml" />
+  </node>
+
+  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+    <arg name="drone_id" value="1"/>
+    <arg name="init_x"   value="$(arg x1)"/>
+    <arg name="init_y"   value="$(arg y1)"/>
+    <arg name="init_z"   value="1"/> 
+    <arg name="init_orw"   value="$(arg orw1)"/> 
+    <arg name="init_orz"   value="$(arg orz1)"/> 
+    <arg name="map_size_x" value="$(arg map_size_x)"/>
+    <arg name="map_size_y" value="$(arg map_size_y)"/>
+    <arg name="map_size_z" value="$(arg map_size_z)"/>
+    <arg name="odom_prefix" value="$(arg odom_prefix)"/>
+    <arg name="drone_num" value="$(arg drone_num)"/>
+    <arg name="simulation" default="true"/>
+    <arg name="vel" value="$(arg vel1)" />
+    <arg name="acc" value="$(arg acc1)" />
+    <arg name="library" value="$(arg library)" />
+    <arg name="map" value="$(arg map)" />
+  </include>
+  
+
+  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+    <arg name="drone_id" value="2"/>
+    <arg name="init_x"   value="$(arg x2)"/>
+    <arg name="init_y"   value="$(arg y2)"/>
+    <arg name="init_z"   value="1"/> 
+    <arg name="init_orw"   value="$(arg orw2)"/> 
+    <arg name="init_orz"   value="$(arg orz2)"/> 
+    <arg name="map_size_x" value="$(arg map_size_x)"/>
+    <arg name="map_size_y" value="$(arg map_size_y)"/>
+    <arg name="map_size_z" value="$(arg map_size_z)"/>
+    <arg name="odom_prefix" value="$(arg odom_prefix)"/>
+    <arg name="drone_num" value="$(arg drone_num)"/>
+    <arg name="simulation" default="true"/>
+    <arg name="vel" value="$(arg vel2)" />
+    <arg name="acc" value="$(arg acc2)" />
+    <arg name="library" value="$(arg library)" />
+    <arg name="map" value="$(arg map)" />
+  </include>
+
+
+  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+    <arg name="drone_id" value="3"/>
+    <arg name="init_x"   value="$(arg x3)"/>
+    <arg name="init_y"   value="$(arg y3)"/>
+    <arg name="init_z"   value="1"/> 
+    <arg name="init_orw"   value="$(arg orw3)"/> 
+    <arg name="init_orz"   value="$(arg orz3)"/> 
+    <arg name="map_size_x" value="$(arg map_size_x)"/>
+    <arg name="map_size_y" value="$(arg map_size_y)"/>
+    <arg name="map_size_z" value="$(arg map_size_z)"/>
+    <arg name="odom_prefix" value="$(arg odom_prefix)"/>
+    <arg name="drone_num" value="$(arg drone_num)"/>
+    <arg name="simulation" default="true"/>
+    <arg name="vel" value="$(arg vel1)" />
+    <arg name="acc" value="$(arg acc1)" />
+    <arg name="library" value="$(arg library)" />
+    <arg name="map" value="$(arg map)" />
+  </include>
+
+  <include file="$(find exploration_manager)/launch/single_drone_exploration.xml">
+    <arg name="drone_id" value="4"/>
+    <arg name="init_x"   value="$(arg x4)"/>
+    <arg name="init_y"   value="$(arg y4)"/>
+    <arg name="init_z"   value="1"/> 
+    <arg name="init_orw"   value="$(arg orw4)"/> 
+    <arg name="init_orz"   value="$(arg orz4)"/> 
+    <arg name="map_size_x" value="$(arg map_size_x)"/>
+    <arg name="map_size_y" value="$(arg map_size_y)"/>
+    <arg name="map_size_z" value="$(arg map_size_z)"/>
+    <arg name="odom_prefix" value="$(arg odom_prefix)"/>
+    <arg name="drone_num" value="$(arg drone_num)"/>
+    <arg name="simulation" default="true"/>
+    <arg name="vel" value="$(arg vel2)" />
+    <arg name="acc" value="$(arg acc2)" />
+    <arg name="library" value="$(arg library)" />
+    <arg name="map" value="$(arg map)" />
+  </include>
+
+  <node pkg="metrics" type="trav_distance" name="trav_distance" output="screen">
+        <param name="drone_id1" value="1" type="int"/>
+        <param name="drone_id2" value="2" type="int"/>
+        <param name="drone_id3" value="3" type="int"/>
+        <param name="drone_id4" value="4" type="int"/>
+  </node>
+  
+  <node pkg="metrics" type="map_completeness.py" name="map_completeness" output="screen" required="true"> 
+        <param name="save_dir" value="$(arg save_dir)" type="string"/>
+        <param name="map" value="$(arg map)" type="string"/>
+        <param name="contador_max" value="$(arg contador_max)" type="int"/>
+  </node>
+
+  
+  <node pkg="metrics" type="trigger.py" name="trigger" output="screen"> 
+        <param name="trigger_time" value="15" type="int"/>
+  </node>
+
+  
+  <node name="rvizvisualisation" pkg="rviz" type="rviz" output="log" args="-d $(find exploration_manager)/config/swarm_2.rviz" />
+  <?ignore
+  ?>
+
+</launch>
