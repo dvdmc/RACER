@@ -1,12 +1,30 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(exploration_manager)
 
+set(BUILD_DEPS ON)
+set(USE_SCIP OFF)
+
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++11")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall")
+# set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "-std=c++14")
+#set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
+
+set(ortools_DIR "/opt/ortools/")
+set(absl_DIR "/opt/ortools/lib/cmake/absl")
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.7 REQUIRED)
+#find_package(protobuf REQUIRED CONFIG)
+#find_package(ortools CONFIG REQUIRED)
+
+include(FetchContent)
+FetchContent_Declare(
+        or-tools
+        GIT_REPOSITORY https://github.com/google/or-tools.git
+        GIT_TAG        master
+)
+FetchContent_MakeAvailable(or-tools)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -56,6 +74,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/include
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
+  /opt/ortools/include
 )
 
 
@@ -67,6 +86,7 @@ add_executable(exploration_node
 target_link_libraries(exploration_node 
   ${catkin_LIBRARIES}
   -ldw
+  ortools::ortools
   )
 
 add_executable(ground_node
@@ -76,4 +96,14 @@ add_executable(ground_node
 target_link_libraries(ground_node
   ${catkin_LIBRARIES}
   -ldw
+  ortools::ortools
+  )
+
+add_executable(test_vrp
+  src/test_vrp.cpp 
+  )
+target_link_libraries(test_vrp
+  ${catkin_LIBRARIES}
+  #/opt/ortools/lib/libortools.so
+  ortools::ortools
   )
