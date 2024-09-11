@@ -5,10 +5,9 @@ set(BUILD_DEPS ON)
 set(USE_SCIP OFF)
 
 set(CMAKE_BUILD_TYPE "Release")
-# set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "-std=c++14")
-#set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
+set(CMAKE_CXX_STANDARD 17)  # OR-Tools typically requires C++17 or newer
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(ortools_DIR "/opt/ortools/")
 set(absl_DIR "/opt/ortools/lib/cmake/absl")
@@ -22,8 +21,12 @@ include(FetchContent)
 FetchContent_Declare(
         or-tools
         GIT_REPOSITORY https://github.com/google/or-tools.git
-        GIT_TAG        master
+        GIT_TAG        v9.0
 )
+set(BUILD_DEPS ON)
+set(BUILD_DOC OFF)
+set(BUILD_SAMPLES OFF)
+set(BUILD_EXAMPLES OFF)
 FetchContent_MakeAvailable(or-tools)
 
 find_package(catkin REQUIRED COMPONENTS
@@ -104,6 +107,5 @@ add_executable(test_vrp
   )
 target_link_libraries(test_vrp
   ${catkin_LIBRARIES}
-  #/opt/ortools/lib/libortools.so
   ortools::ortools
   )

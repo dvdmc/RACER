@@ -1,4 +1,12 @@
-# Fast-Planner
+# Fast-Planner Heterogeneous
+
+## IMPORTANT MODIFICATIONS
+
+Apart from the information for installation explained in this repo, several things should be done for installing in Ubuntu 20.04.
+- The C++ standard is 14. This is required for PCL library compatibility. 
+- The gcc and g++ versions are 9. Version 10 has a problem for compiling LKH.
+- Make sure that NLopt is not installed from `apt`. Install it manually from [here](https://nlopt.readthedocs.io/en/latest/NLopt_Installation/). Then, make sure that the CMakeLists.txt in bspline_opt can find it. When `make install` NLopt, it should create the CMake configuration required to find the package. You only have to make sure that the package name is the same as the installed (not nlopt, not NLOPT, but NLopt).
+- We install the tag 8.0 for OR-Tools using FetchContent. Any posterior version has compiling problems due to iterator problems in std:: and Eigen.
 
 ## News
 

@@ -4,7 +4,6 @@ project(bspline_opt)
 set(CMAKE_BUILD_TYPE "Release")
 set(CMAKE_CXX_FLAGS "-std=c++14")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall")
-set(NLopt_INCLUDE_DIRS ${NLOPT_INCLUDE_DIR})
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.7 REQUIRED)
@@ -18,7 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   plan_env
   active_perception
   cv_bridge
-  nlopt
+  NLopt
 )
 
 catkin_package(
@@ -34,7 +33,7 @@ include_directories(
     ${catkin_INCLUDE_DIRS}
     ${Eigen3_INCLUDE_DIRS} 
     ${PCL_INCLUDE_DIRS}
-    ${NLOPT_INCLUDE_DIR}
+    ${nlopt_INCLUDE_DIR}
 )
 
 add_library( bspline_opt 
@@ -42,6 +41,6 @@ add_library( bspline_opt
     )
 target_link_libraries( bspline_opt
     ${catkin_LIBRARIES} 
-    ${NLOPT_LIBRARIES}
+    nlopt
     # /usr/local/lib/libnlopt.so
     )  
